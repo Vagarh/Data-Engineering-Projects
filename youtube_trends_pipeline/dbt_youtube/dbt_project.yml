@@ -1,0 +1,27 @@
+name: 'dbt_youtube'
+version: '1.0.0'
+config-version: 2
+
+profile: 'youtube_dwh'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"  # directory which will store compiled SQL, run results, etc.
+clean-targets:         # directories to clean when `dbt clean` is run
+  - "target"
+  - "dbt_packages"
+
+models:
+  dbt_youtube:
+    # Config all models in this project to be materialized as views.
+    # You can override this for specific models in their own config blocks.
+    +materialized: view
+    staging:
+      +schema: staging
+    marts:
+      +schema: marts

@@ -1,0 +1,6 @@
+apache-airflow==2.8.1
+apache-airflow-providers-postgres==5.5.1
+pandas==2.1.4
+dbt-postgres==1.7.0
+requests==2.31.0
+s3fs==2023.12.2

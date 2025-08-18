@@ -1,0 +1,12 @@
+youtube_dwh:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: postgres-db
+      port: 5432
+      user: airflow_user # Or a dedicated dbt user
+      password: airflow_pass # Or a dedicated dbt password
+      dbname: youtube_dwh
+      schema: public # Default schema for dbt models
+      threads: 1
