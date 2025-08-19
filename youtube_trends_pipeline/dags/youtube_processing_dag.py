@@ -4,25 +4,35 @@ from datetime import datetime
 from airflow.operators.python import PythonOperator
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-import pandas as pd
 import io
+import logging
+
+import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Define a function for loading data from MinIO to Postgres
-def load_minio_to_postgres():
-    s3_hook = S3Hook(aws_conn_id='minio_s3_conn') # Assuming a MinIO connection is set up in Airflow
-    postgres_hook = PostgresHook(postgres_conn_id='postgres_dwh_conn') # Assuming a Postgres connection is set up in Airflow
+def load_minio_to_postgres() -> None:
+    """Load raw YouTube data from MinIO to the Postgres data warehouse."""
 
-    # Get the file from MinIO
-    # For simplicity, assuming USvideos.csv is the file
-    file_content = s3_hook.read_key(key='USvideos.csv', bucket_name='raw-data')
-    
-    # Read into pandas DataFrame
-    df = pd.read_csv(io.StringIO(file_content))
+    try:
+        s3_hook = S3Hook(aws_conn_id="minio_s3_conn")  # MinIO connection
+        postgres_hook = PostgresHook(postgres_conn_id="postgres_dwh_conn")
 
-    # Load to Postgres
-    # Ensure table name matches what dbt expects
-    df.to_sql('raw_youtube_videos', postgres_hook.get_sqlalchemy_engine(), if_exists='replace', index=False)
-    print("Data loaded from MinIO to PostgreSQL successfully.")
+        # For simplicity, assuming USvideos.csv is the file
+        file_content = s3_hook.read_key(key="USvideos.csv", bucket_name="raw-data")
+        df = pd.read_csv(io.StringIO(file_content))
+
+        df.to_sql(
+            "raw_youtube_videos",
+            postgres_hook.get_sqlalchemy_engine(),
+            if_exists="replace",
+            index=False,
+        )
+        logger.info("Data loaded from MinIO to PostgreSQL successfully")
+    except Exception:
+        logger.exception("Failed to load data from MinIO to PostgreSQL")
+        raise
 
 
 with DAG(

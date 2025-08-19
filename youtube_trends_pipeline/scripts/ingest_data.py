@@ -1,23 +1,47 @@
+"""Utility to ingest a local CSV file into a MinIO bucket.
+
+This script is executed inside the Airflow container and uploads the
+``USvideos.csv`` file to the ``raw-data`` bucket.  The previous version
+relied on ``print`` statements and minimal error handling.  The current
+implementation introduces structured logging and more robust exception
+management so that Airflow can surface clear failure messages.
+"""
+
+import logging
+import os
+
 import pandas as pd
 import s3fs
-import os
 
 # MinIO connection details
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_BUCKET = "raw-data"
-LOCAL_CSV_FILE = "/opt/airflow/scripts/USvideos.csv" # Assuming the file is here for now
+# Assuming the file is here for now.  In production this could be an
+# input parameter or sourced from an upstream task.
+LOCAL_CSV_FILE = "/opt/airflow/scripts/USvideos.csv"
 
-def ingest_data_to_minio():
-    print(f"Attempting to ingest data from {LOCAL_CSV_FILE} to MinIO bucket {MINIO_BUCKET}")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def ingest_data_to_minio() -> None:
+    """Upload the local CSV file to the configured MinIO bucket."""
+
+    logger.info(
+        "Attempting to ingest data from %s to MinIO bucket %s",
+        LOCAL_CSV_FILE,
+        MINIO_BUCKET,
+    )
 
     # Ensure the local CSV file exists (for testing purposes)
     if not os.path.exists(LOCAL_CSV_FILE):
-        print(f"Error: Local CSV file not found at {LOCAL_CSV_FILE}. Please place a sample CSV there.")
+        logger.error(
+            "Local CSV file not found at %s. Creating a dummy CSV for demonstration.",
+            LOCAL_CSV_FILE,
+        )
         # For a real pipeline, you'd add logic to download from Kaggle here.
         # For now, we'll create a dummy file if it doesn't exist for demonstration.
-        print("Creating a dummy CSV file for demonstration.")
         dummy_data = {
             'video_id': ['abc', 'def'],
             'trending_date': ['17.14.09', '17.14.09'],
@@ -37,7 +61,7 @@ def ingest_data_to_minio():
             'description': ['Desc 1', 'Desc 2']
         }
         pd.DataFrame(dummy_data).to_csv(LOCAL_CSV_FILE, index=False)
-        print("Dummy CSV created.")
+        logger.info("Dummy CSV created at %s", LOCAL_CSV_FILE)
 
 
     # Initialize S3 filesystem
@@ -56,15 +80,19 @@ def ingest_data_to_minio():
     try:
         # Read the local CSV file
         df = pd.read_csv(LOCAL_CSV_FILE)
-        print(f"Successfully read {len(df)} rows from {LOCAL_CSV_FILE}")
+        logger.info("Successfully read %d rows from %s", len(df), LOCAL_CSV_FILE)
 
         # Write the DataFrame to MinIO
-        with fs.open(minio_path, 'wb') as f:
+        with fs.open(minio_path, "wb") as f:
             df.to_csv(f, index=False)
-        print(f"Successfully uploaded {LOCAL_CSV_FILE} to MinIO at s3://{minio_path}")
+        logger.info(
+            "Successfully uploaded %s to MinIO at s3://%s",
+            LOCAL_CSV_FILE,
+            minio_path,
+        )
 
-    except Exception as e:
-        print(f"Error during data ingestion: {e}")
+    except Exception:  # pragma: no cover - generic catch for pipeline reliability
+        logger.exception("Error during data ingestion")
 
 if __name__ == "__main__":
     ingest_data_to_minio()
