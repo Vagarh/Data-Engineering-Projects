@@ -1,0 +1,7 @@
+
+trade_id,coin_name,price_usd,trade_timestamp
+1001,bitcoin,45000.50,1704067200
+1002,ethereum,2400.75,1704067260
+1003,bitcoin,45050.10,1704067320
+1004,dogecoin,0.08,1704067380
+1005,ethereum,2410.00,1704067440
