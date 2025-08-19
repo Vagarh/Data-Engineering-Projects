@@ -94,4 +94,5 @@ docker-compose.yml.override
 .vscode/
 *.DS_Store
 
-# Gemini.md
+# Gemini instrucciones
+.Gemini.md
