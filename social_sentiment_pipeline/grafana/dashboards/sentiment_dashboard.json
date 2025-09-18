@@ -1,0 +1,148 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Análisis de Sentimientos en Tiempo Real",
+    "tags": ["sentiment", "social-media", "real-time"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Tweets Procesados por Hora",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "SELECT count() FROM sentiment_analysis WHERE processing_timestamp >= now() - INTERVAL 1 HOUR",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 100},
+                {"color": "green", "value": 500}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Distribución de Sentimientos",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "SELECT predicted_sentiment, count() as count FROM sentiment_analysis WHERE processing_timestamp >= now() - INTERVAL 24 HOUR GROUP BY predicted_sentiment",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Confianza Promedio del Modelo",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "SELECT avg(confidence) FROM sentiment_analysis WHERE processing_timestamp >= now() - INTERVAL 1 HOUR",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.5},
+                {"color": "green", "value": 0.8}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Engagement Total",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "SELECT sum(like_count + retweet_count) FROM sentiment_analysis WHERE processing_timestamp >= now() - INTERVAL 24 HOUR",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "Tendencia de Sentimientos por Hora",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "SELECT hour_timestamp, positive_tweets, neutral_tweets, negative_tweets FROM sentiment_hourly_agg WHERE date_partition >= today() - 7 ORDER BY hour_timestamp",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Top Autores por Engagement",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "SELECT author_id, sum(like_count + retweet_count) as total_engagement, count() as tweet_count FROM sentiment_analysis WHERE processing_timestamp >= now() - INTERVAL 24 HOUR GROUP BY author_id ORDER BY total_engagement DESC LIMIT 10",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 7,
+        "title": "Palabras Clave Más Mencionadas",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "SELECT extractAll(lower(text), '[a-zA-Z]+') as words FROM sentiment_analysis WHERE processing_timestamp >= now() - INTERVAL 1 HOUR",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "Alertas de Sentimiento Negativo",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "SELECT created_at, text, confidence FROM sentiment_analysis WHERE predicted_sentiment = 'negative' AND confidence > 0.8 AND processing_timestamp >= now() - INTERVAL 1 HOUR ORDER BY created_at DESC LIMIT 20",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "refresh": "30s",
+    "schemaVersion": 30,
+    "version": 1
+  }
+}

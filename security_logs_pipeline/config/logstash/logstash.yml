@@ -1,0 +1,34 @@
+# Configuración principal de Logstash
+
+# Configuración del nodo
+node.name: logstash-security
+
+# Configuración de paths
+path.data: /usr/share/logstash/data
+path.config: /usr/share/logstash/pipeline
+path.logs: /usr/share/logstash/logs
+
+# Configuración de pipeline
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# Configuración de monitoreo
+monitoring.enabled: true
+monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+monitoring.elasticsearch.username: "elastic"
+monitoring.elasticsearch.password: "password"
+
+# Configuración de logging
+log.level: info
+log.format: plain
+
+# Configuración de HTTP API
+http.host: "0.0.0.0"
+http.port: 9600
+
+# Configuración de seguridad
+xpack.monitoring.enabled: true
+xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+xpack.monitoring.elasticsearch.username: "elastic"
+xpack.monitoring.elasticsearch.password: "password"

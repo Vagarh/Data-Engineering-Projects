@@ -1,0 +1,31 @@
+FROM apache/airflow:2.7.0-python3.9
+
+USER root
+
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+USER airflow
+
+# Copiar requirements
+COPY requirements.txt /requirements.txt
+
+# Instalar dependencias Python
+RUN pip install --no-cache-dir -r /requirements.txt
+
+# Inicializar base de datos de Airflow
+RUN airflow db init
+
+# Crear usuario admin
+RUN airflow users create \
+    --username admin \
+    --firstname Security \
+    --lastname Admin \
+    --role Admin \
+    --email security-admin@company.com \
+    --password admin

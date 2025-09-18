@@ -1,0 +1,406 @@
+version: '3.8'
+
+services:
+  # Elasticsearch - Motor de búsqueda y almacenamiento
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=security-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - xpack.security.enabled=true
+      - xpack.security.authc.api_key.enabled=true
+      - ELASTIC_PASSWORD=password
+      - xpack.security.transport.ssl.enabled=false
+      - xpack.security.http.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+      - ./config/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - security-network
+
+  # Kibana - Visualización y dashboards
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=password
+      - SERVER_NAME=kibana
+      - SERVER_HOST=0.0.0.0
+    volumes:
+      - ./config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml
+      - ./dashboards/kibana:/usr/share/kibana/dashboards
+    ports:
+      - "5601:5601"
+    networks:
+      - security-network
+
+  # Logstash - Procesamiento y enriquecimiento de logs
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    depends_on:
+      - elasticsearch
+      - kafka
+    environment:
+      - "LS_JAVA_OPTS=-Xmx1g -Xms1g"
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=password
+    volumes:
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline
+      - ./config/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - ./data/sample_logs:/usr/share/logstash/logs
+    ports:
+      - "5044:5044"  # Beats input
+      - "9600:9600"  # Logstash monitoring
+    networks:
+      - security-network
+
+  # Filebeat - Colector de logs
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.11.0
+    container_name: filebeat
+    user: root
+    depends_on:
+      - logstash
+    volumes:
+      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./data/sample_logs:/var/log/security:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOGSTASH_HOSTS=logstash:5044
+    networks:
+      - security-network
+
+  # Zookeeper para Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - security-network
+
+  # Kafka - Message broker para streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - security-network
+
+  # Kafka UI para monitoreo
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: security-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks:
+      - security-network
+
+  # Apache Storm - Procesamiento en tiempo real
+  storm-nimbus:
+    image: storm:2.4.0
+    container_name: storm-nimbus
+    command: storm nimbus
+    depends_on:
+      - zookeeper
+    environment:
+      STORM_ZOOKEEPER_SERVERS: zookeeper
+    volumes:
+      - ./src/processors:/opt/storm/topologies
+      - ./config/storm/storm.yaml:/conf/storm.yaml
+    ports:
+      - "6627:6627"
+    networks:
+      - security-network
+
+  storm-supervisor:
+    image: storm:2.4.0
+    container_name: storm-supervisor
+    command: storm supervisor
+    depends_on:
+      - storm-nimbus
+    environment:
+      STORM_ZOOKEEPER_SERVERS: zookeeper
+      STORM_NIMBUS_SEEDS: storm-nimbus
+    volumes:
+      - ./src/processors:/opt/storm/topologies
+      - ./config/storm/storm.yaml:/conf/storm.yaml
+    networks:
+      - security-network
+
+  storm-ui:
+    image: storm:2.4.0
+    container_name: storm-ui
+    command: storm ui
+    depends_on:
+      - storm-nimbus
+    environment:
+      STORM_ZOOKEEPER_SERVERS: zookeeper
+      STORM_NIMBUS_SEEDS: storm-nimbus
+    ports:
+      - "8082:8080"
+    networks:
+      - security-network
+
+  # Wazuh Manager - SIEM y detección de amenazas
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.0
+    container_name: wazuh-manager
+    hostname: wazuh-manager
+    restart: always
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 655360
+        hard: 655360
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "514:514/udp"
+      - "55000:55000"
+    environment:
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+      - FILEBEAT_SSL_VERIFICATION_MODE=full
+      - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
+      - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
+      - SSL_KEY=/etc/ssl/filebeat.key
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
+    volumes:
+      - wazuh-manager-config:/var/ossec/etc
+      - wazuh-manager-logs:/var/ossec/logs
+      - wazuh-manager-queue:/var/ossec/queue
+      - wazuh-manager-var-multigroups:/var/ossec/var/multigroups
+      - wazuh-manager-integrations:/var/ossec/integrations
+      - wazuh-manager-active-response:/var/ossec/active-response/bin
+      - wazuh-manager-agentless:/var/ossec/agentless
+      - wazuh-manager-wodles:/var/ossec/wodles
+      - ./config/wazuh/rules:/var/ossec/etc/rules/local_rules.xml
+    networks:
+      - security-network
+
+  # Wazuh Indexer (OpenSearch)
+  wazuh-indexer:
+    image: wazuh/wazuh-indexer:4.7.0
+    container_name: wazuh-indexer
+    hostname: wazuh-indexer
+    restart: always
+    ports:
+      - "9201:9200"
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "bootstrap.memory_lock=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+    networks:
+      - security-network
+
+  # Wazuh Dashboard
+  wazuh-dashboard:
+    image: wazuh/wazuh-dashboard:4.7.0
+    container_name: wazuh-dashboard
+    hostname: wazuh-dashboard
+    restart: always
+    ports:
+      - "443:5601"
+    environment:
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=SecretPassword
+      - WAZUH_API_URL=https://wazuh-manager
+      - DASHBOARD_USERNAME=kibanaserver
+      - DASHBOARD_PASSWORD=kibanaserver
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MyS3cr37P450r.*-
+    depends_on:
+      - wazuh-indexer
+    links:
+      - wazuh-indexer:wazuh-indexer
+      - wazuh-manager:wazuh-manager
+    networks:
+      - security-network
+
+  # PostgreSQL para Airflow
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - security-network
+
+  # Redis para Airflow
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - security-network
+
+  # Airflow Webserver
+  airflow-webserver:
+    build: 
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: airflow-webserver
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/src
+    ports:
+      - "8081:8080"
+    command: webserver
+    networks:
+      - security-network
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    build: 
+      context: .
+      dockerfile: Dockerfile.airflow
+    container_name: airflow-scheduler
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./src:/opt/airflow/src
+    command: scheduler
+    networks:
+      - security-network
+
+  # ML Processing Service
+  ml-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    container_name: ml-processor
+    depends_on:
+      - kafka
+      - elasticsearch
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: password
+    volumes:
+      - ./src/ml_models:/app/ml_models
+      - ./data/ml_models:/app/models
+    networks:
+      - security-network
+
+  # Log Generator para testing
+  log-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.generator
+    container_name: log-generator
+    volumes:
+      - ./data/sample_logs:/app/logs
+    environment:
+      LOG_TYPES: "web,firewall,auth,system"
+      LOGS_PER_MINUTE: 100
+      ANOMALY_RATE: 0.05
+    networks:
+      - security-network
+
+volumes:
+  elasticsearch-data:
+  kafka-data:
+  zookeeper-data:
+  zookeeper-logs:
+  postgres-data:
+  wazuh-manager-config:
+  wazuh-manager-logs:
+  wazuh-manager-queue:
+  wazuh-manager-var-multigroups:
+  wazuh-manager-integrations:
+  wazuh-manager-active-response:
+  wazuh-manager-agentless:
+  wazuh-manager-wodles:
+  wazuh-indexer-data:
+
+networks:
+  security-network:
+    driver: bridge
