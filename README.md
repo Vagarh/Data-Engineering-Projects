@@ -105,3 +105,27 @@ Este proyecto demuestra competencias críticas en detección de amenazas, análi
 - **Monitoreo Web:** Detección de ataques SQL injection, XSS, CSRF
 - **Análisis de Autenticación:** Detección de ataques de fuerza bruta
 - **Comportamiento Anómalo:** Identificación de actividad sospechosa de usuarios
+
+---
+
+### 5. Análisis de Incidentes Viales (E2E Open Data)
+
+- **Directorio:** [`./e2e_open_data_pipeline/`](./e2e_open_data_pipeline/)
+
+#### Descripción
+
+Este proyecto es una solución integral de ingeniería de datos que automatiza el ciclo de vida completo de los datos, desde la ingesta de fuentes públicas gubernamentales hasta la visualización analítica. Utiliza **Apache Airflow** para orquestar un pipeline ETL que extrae datos de incidentes viales de la API de Socrata (Datos Abiertos Colombia), realiza transformaciones y limpieza profunda con Python/Pandas, y almacena los resultados en un Data Warehouse basado en **PostgreSQL**. Finalmente, los datos se exponen a través de un dashboard interactivo moderno construido con **Streamlit**, permitiendo el análisis geoespacial y estadístico de la seguridad vial.
+
+#### Stack Tecnológico
+- **Orquestación:** Apache Airflow
+- **Almacenamiento:** PostgreSQL (Data Warehouse)
+- **Transformación:** Python & Pandas
+- **Visualización:** Streamlit + Plotly
+- **Infraestructura:** Docker & Docker Compose
+- **Ingesta:** Socrata Open Data API
+
+#### Características Destacadas
+- **Pipeline Automatizado:** Programación periódica y manejo de dependencias.
+- **Idempotencia:** Carga segura mediante estrategias de *Upsert* (ON CONFLICT DO NOTHING).
+- **Análisis Espacial:** Mapeo interactivo de puntos críticos de accidentalidad.
+- **KPIs de Negocio:** Reporte ejecutivo de gravedad, causas y horarios pico.
